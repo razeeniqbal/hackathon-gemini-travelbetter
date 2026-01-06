@@ -1,0 +1,7 @@
+{
+  "name": "TravelBetter",
+  "description": "Convert screenshots and messy chat text into structured, navigable itineraries with intelligent China/Global map switching.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
