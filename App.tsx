@@ -9,12 +9,16 @@ import ExploreView from './components/ExploreView';
 import { extractItineraryFromText, extractItineraryFromImage, optimizeAndGroupRoute, getTravelEstimates, identifyLandmarkFromImage, getWeatherForecast } from './services/geminiService';
 import { fileToBase64, exportToICS, getMultiStopRouteUrl } from './utils/helpers';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
+import { saveCurrentTrip, loadTrip, loadTripByShareToken, deleteTrip, generateShareLink, getAllSavedTrips, updateTripActivities } from './src/hooks/useTrips';
 
 const App: React.FC = () => {
   const [itinerary, setItinerary] = useState<TripItem[]>([]);
   const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>([]);
+  const [currentTripId, setCurrentTripId] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string>(window.location.origin);
   const [weatherData, setWeatherData] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTrip, setIsLoadingTrip] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<AppView>(AppView.LIST);
@@ -26,32 +30,30 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('lazyTravel_profiles');
-    if (stored) {
-      try { setSavedProfiles(JSON.parse(stored)); } catch (e) { console.error(e); }
-    }
+    // Check if loading shared trip from URL path /shared/:token
+    const path = window.location.pathname;
+    const sharedMatch = path.match(/^\/shared\/([a-z0-9]+)$/);
 
-    const hash = window.location.hash.substring(1);
-    if (hash) {
-      try {
-        // Try decodeURIComponent first (new format), fallback to atob (old format)
-        let decoded;
-        try {
-          decoded = JSON.parse(decodeURIComponent(hash));
-        } catch {
-          decoded = JSON.parse(atob(hash));
-        }
-        if (Array.isArray(decoded)) {
-          setItinerary(decoded);
-          window.history.replaceState(null, "", window.location.pathname);
-        }
-      } catch (e) { console.warn("Failed to import itinerary from hash"); }
+    if (sharedMatch) {
+      const token = sharedMatch[1];
+      loadSharedTrip(token);
     }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('lazyTravel_profiles', JSON.stringify(savedProfiles));
-  }, [savedProfiles]);
+  const loadSharedTrip = async (token: string) => {
+    setIsLoadingTrip(true);
+    try {
+      const items = await loadTripByShareToken(token);
+      setItinerary(items);
+      // Clear URL after loading
+      window.history.replaceState(null, "", "/");
+    } catch (error) {
+      console.error('Failed to load shared trip:', error);
+      setError('Invalid share link or trip not found.');
+    } finally {
+      setIsLoadingTrip(false);
+    }
+  };
 
   useEffect(() => {
     const fetchWeather = async () => {
@@ -63,21 +65,70 @@ const App: React.FC = () => {
     fetchWeather();
   }, [itinerary]);
 
+  // Fetch saved trips when switching to library view
+  useEffect(() => {
+    if (currentView === AppView.DISCOVER) {
+      fetchSavedTrips();
+    }
+  }, [currentView]);
+
+  const fetchSavedTrips = async () => {
+    try {
+      const trips = await getAllSavedTrips();
+      // Transform to SavedProfile format for compatibility
+      setSavedProfiles(trips.map(trip => ({
+        id: trip.id,
+        title: trip.title,
+        items: [], // Items not loaded until trip is opened
+        createdAt: new Date(trip.createdAt).getTime(),
+        cities: trip.cities,
+        totalBudget: trip.totalBudget
+      })));
+    } catch (error) {
+      console.error('Failed to fetch trips:', error);
+      setError('Failed to load saved trips.');
+    }
+  };
+
+  // Auto-save: Debounced sync to database when itinerary changes
+  useEffect(() => {
+    if (!currentTripId || itinerary.length === 0) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        await updateTripActivities(currentTripId, itinerary);
+        console.log('Trip auto-saved');
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+      }
+    }, 1000); // Debounce 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [itinerary, currentTripId]);
+
   const totalBudget = useMemo(() => 
     itinerary.reduce((sum, item) => sum + (item.cost || 0), 0), 
   [itinerary]);
 
-  const shareUrl = useMemo(() => {
-    if (itinerary.length === 0) return window.location.origin + window.location.pathname;
-    try {
-      // Use encodeURIComponent instead of btoa to support Unicode
-      const encoded = encodeURIComponent(JSON.stringify(itinerary));
-      return `${window.location.origin}${window.location.pathname}#${encoded}`;
-    } catch (e) {
-      console.error("Failed to generate share URL", e);
-      return window.location.origin + window.location.pathname;
-    }
-  }, [itinerary]);
+  // Generate share link when trip is saved
+  useEffect(() => {
+    const generateShare = async () => {
+      if (!currentTripId) {
+        setShareUrl(window.location.origin);
+        return;
+      }
+
+      try {
+        const token = await generateShareLink(currentTripId);
+        setShareUrl(`${window.location.origin}/shared/${token}`);
+      } catch (error) {
+        console.error('Failed to generate share link:', error);
+        setShareUrl(window.location.origin);
+      }
+    };
+
+    generateShare();
+  }, [currentTripId]);
 
   const handleProcessText = async (text: string) => {
     if (!text.trim()) return;
@@ -164,19 +215,27 @@ const App: React.FC = () => {
     } catch (err) { setError("AR error."); } finally { setIsLoading(false); }
   };
 
-  const saveToLibrary = () => {
+  const saveToLibrary = async () => {
     if (itinerary.length === 0) return;
-    const title = prompt("Trip Name:", `Trip to ${itinerary[0].city}`) || "My Trip";
-    setSavedProfiles(prev => [{
-      id: Date.now().toString(),
-      title,
-      items: [...itinerary],
-      createdAt: Date.now(),
-      cities: Array.from(new Set(itinerary.map(i => i.city))),
-      totalBudget
-    }, ...prev]);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    const title = prompt("Trip Name:", `Trip to ${itinerary[0].city}`);
+    if (!title) return;
+
+    setIsLoadingTrip(true);
+    try {
+      const tripId = await saveCurrentTrip(itinerary, title);
+      setCurrentTripId(tripId);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+      // Refresh saved trips list if in library view
+      if (currentView === AppView.DISCOVER) {
+        await fetchSavedTrips();
+      }
+    } catch (error) {
+      console.error('Failed to save trip:', error);
+      setError('Failed to save trip. Please try again.');
+    } finally {
+      setIsLoadingTrip(false);
+    }
   };
 
   const groupedItinerary = useMemo(() => {
@@ -194,11 +253,32 @@ const App: React.FC = () => {
       <AnimatePresence mode="wait">
         {currentView === AppView.MAP && <MapOverview key="map" items={itinerary} onBack={() => setCurrentView(AppView.LIST)} />}
         {currentView === AppView.DISCOVER && (
-          <ExploreView 
+          <ExploreView
             key="library"
             profiles={savedProfiles}
-            onLoadProfile={(p) => { setItinerary(p.items); setCurrentView(AppView.LIST); }}
-            onDeleteProfile={(id) => setSavedProfiles(prev => prev.filter(p => p.id !== id))}
+            onLoadProfile={async (p) => {
+              setIsLoadingTrip(true);
+              try {
+                const items = await loadTrip(p.id);
+                setItinerary(items);
+                setCurrentTripId(p.id);
+                setCurrentView(AppView.LIST);
+              } catch (error) {
+                console.error('Failed to load trip:', error);
+                setError('Failed to load trip.');
+              } finally {
+                setIsLoadingTrip(false);
+              }
+            }}
+            onDeleteProfile={async (id) => {
+              try {
+                await deleteTrip(id);
+                setSavedProfiles(prev => prev.filter(p => p.id !== id));
+              } catch (error) {
+                console.error('Failed to delete trip:', error);
+                setError('Failed to delete trip.');
+              }
+            }}
             onStartNew={() => setCurrentView(AppView.LIST)}
           />
         )}
