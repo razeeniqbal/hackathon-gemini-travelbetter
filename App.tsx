@@ -34,7 +34,13 @@ const App: React.FC = () => {
     const hash = window.location.hash.substring(1);
     if (hash) {
       try {
-        const decoded = JSON.parse(atob(hash));
+        // Try decodeURIComponent first (new format), fallback to atob (old format)
+        let decoded;
+        try {
+          decoded = JSON.parse(decodeURIComponent(hash));
+        } catch {
+          decoded = JSON.parse(atob(hash));
+        }
         if (Array.isArray(decoded)) {
           setItinerary(decoded);
           window.history.replaceState(null, "", window.location.pathname);
@@ -64,8 +70,9 @@ const App: React.FC = () => {
   const shareUrl = useMemo(() => {
     if (itinerary.length === 0) return window.location.origin + window.location.pathname;
     try {
-      const base64 = btoa(JSON.stringify(itinerary));
-      return `${window.location.origin}${window.location.pathname}#${base64}`;
+      // Use encodeURIComponent instead of btoa to support Unicode
+      const encoded = encodeURIComponent(JSON.stringify(itinerary));
+      return `${window.location.origin}${window.location.pathname}#${encoded}`;
     } catch (e) {
       console.error("Failed to generate share URL", e);
       return window.location.origin + window.location.pathname;

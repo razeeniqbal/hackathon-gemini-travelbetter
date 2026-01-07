@@ -49,13 +49,12 @@ export interface ExtractedActivity {
 
 export async function extractFromText(text: string): Promise<ExtractedActivity[]> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: `Extract travel destinations and activities from this text.
-    Use Google Search to verify place names, get accurate coordinates, and find ratings.
+    Provide accurate place names, estimated coordinates, and other details.
 
     Text: ${text}`,
     config: {
-      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: ACTIVITY_SCHEMA,
     },
@@ -67,13 +66,12 @@ export async function extractFromText(text: string): Promise<ExtractedActivity[]
 
 export async function extractFromImage(base64Image: string): Promise<ExtractedActivity[]> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: [
       { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-      { text: "Extract travel destinations from this screenshot. Use Google Search to verify places and get coordinates." },
+      { text: "Extract travel destinations from this screenshot. Provide accurate place names and estimated coordinates." },
     ],
     config: {
-      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: ACTIVITY_SCHEMA,
     },
@@ -85,14 +83,13 @@ export async function extractFromImage(base64Image: string): Promise<ExtractedAc
 
 export async function extractFromXHSLink(url: string): Promise<ExtractedActivity[]> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: `This is a Xiaohongshu (小红书) link: ${url}
 
-    Use Google Search to fetch the content and extract travel recommendations.
+    Extract travel recommendations from this link.
     Look for place names, restaurants, attractions, and activities mentioned.
-    Verify each place with Google Search to get accurate coordinates and details.`,
+    Provide accurate place names and estimated coordinates.`,
     config: {
-      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: ACTIVITY_SCHEMA,
     },
@@ -104,7 +101,7 @@ export async function extractFromXHSLink(url: string): Promise<ExtractedActivity
 
 export async function extractFromXHSScreenshot(base64Image: string): Promise<ExtractedActivity[]> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: [
       { inlineData: { mimeType: "image/jpeg", data: base64Image } },
       { text: `This is a screenshot from Xiaohongshu (小红书) app.
@@ -115,10 +112,9 @@ export async function extractFromXHSScreenshot(base64Image: string): Promise<Ext
       - User comments about the places
       - Any ratings or tags
 
-      Use Google Search to verify each place and get accurate coordinates, ratings, and descriptions.` },
+      Provide accurate place names and estimated coordinates.` },
     ],
     config: {
-      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: ACTIVITY_SCHEMA,
     },
@@ -130,13 +126,12 @@ export async function extractFromXHSScreenshot(base64Image: string): Promise<Ext
 
 export async function identifyLandmark(base64Image: string): Promise<ExtractedActivity | null> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: [
       { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-      { text: "Identify this landmark or place. Use Google Search to get accurate coordinates, rating, and description." },
+      { text: "Identify this landmark or place. Provide accurate name, coordinates, rating, and description." },
     ],
     config: {
-      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -165,7 +160,7 @@ export async function identifyLandmark(base64Image: string): Promise<ExtractedAc
 
 export async function optimizeRoute(activities: { placeName: string; city: string; lat?: number; lng?: number }[]): Promise<{ optimizedOrder: number[]; dayGrouping: Record<number, number[]> }> {
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-2.5-flash",
     contents: `Optimize this travel itinerary for the best route and group into days.
     Consider:
     - Logical order (breakfast → sightseeing → lunch → museum → dinner)
