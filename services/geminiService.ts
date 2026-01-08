@@ -116,7 +116,7 @@ export const getTravelEstimates = async (items: TripItem[]): Promise<string[]> =
   // Simplified - return empty travel estimates
   // TODO: Integrate with Google Maps API or backend endpoint
   if (items.length < 2) return [];
-  return Array(items.length - 1).fill('~10 min');
+  return Array(items.length - 1).fill('~10 min'); 
 };
 
 export const optimizeAndGroupRoute = async (items: TripItem[]): Promise<TripItem[]> => {
