@@ -1,223 +1,154 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { TripItem, TripSource } from "../types";
+import { TripItem } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-const ITINERARY_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    items: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          id: { type: Type.STRING },
-          placeName: { type: Type.STRING },
-          category: { type: Type.STRING },
-          city: { type: Type.STRING },
-          originalContext: { type: Type.STRING },
-          rating: { type: Type.NUMBER, description: "Average rating out of 5" },
-          description: { type: Type.STRING, description: "One sentence summary" },
-          websiteUrl: { type: Type.STRING, description: "Official website or Maps link" },
-          address: { type: Type.STRING, description: "Physical address" },
-          cost: { type: Type.NUMBER, description: "Estimated cost in local currency" },
-          dayNumber: { type: Type.INTEGER, description: "Suggested day (1, 2, etc.)" },
-          lat: { type: Type.NUMBER, description: "Latitude" },
-          lng: { type: Type.NUMBER, description: "Longitude" },
-          travelTimeNext: { type: Type.STRING, description: "Travel time to next, e.g., '12 min walk'" }
-        },
-        required: ["id", "placeName", "category", "city"],
-      },
-    },
-  },
-};
-
-const extractSources = (response: any): TripSource[] => {
-  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-  return chunks
-    .filter((chunk: any) => chunk.web)
-    .map((chunk: any) => ({
-      title: chunk.web.title || 'Source',
-      uri: chunk.web.uri
-    }));
-};
+// Get backend URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const extractItineraryFromText = async (text: string): Promise<TripItem[]> => {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Extract travel stops. Verify using Google Search for accuracy. Notes: ${text}`,
-    config: {
-      tools: [{ googleSearch: {} }],
-      responseMimeType: "application/json",
-      responseSchema: ITINERARY_SCHEMA,
-    },
+  const response = await fetch(`${API_URL}/api/import/text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
   });
-  
-  const result = JSON.parse(response.text || '{"items": []}');
-  const sources = extractSources(response);
-  
-  return result.items.map((item: any) => ({ 
-    ...item, 
-    isVerified: true,
-    sources: sources.length > 0 ? sources : undefined
+
+  if (!response.ok) {
+    throw new Error(`Failed to extract from text: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  return data.activities.map((activity: any, index: number) => ({
+    id: `${Date.now()}-${index}`,
+    placeName: activity.placeName,
+    category: activity.category,
+    city: activity.city,
+    originalContext: activity.originalContext || text,
+    rating: activity.rating,
+    description: activity.description,
+    websiteUrl: activity.websiteUrl,
+    address: activity.address,
+    cost: activity.cost,
+    dayNumber: 1, // Default to day 1, will be optimized later
+    lat: activity.lat,
+    lng: activity.lng,
+    isVerified: true
   }));
 };
 
 export const extractItineraryFromImage = async (base64Image: string): Promise<TripItem[]> => {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: [
-      { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-      { text: "Extract travel stops from this screenshot. Use Google Search to verify names and coordinates." },
-    ],
-    config: {
-      tools: [{ googleSearch: {} }],
-      responseMimeType: "application/json",
-      responseSchema: ITINERARY_SCHEMA,
-    },
+  const response = await fetch(`${API_URL}/api/import/image`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base64Image })
   });
-  
-  const result = JSON.parse(response.text || '{"items": []}');
-  const sources = extractSources(response);
-  
-  return result.items.map((item: any) => ({ 
-    ...item, 
-    isVerified: true,
-    sources: sources.length > 0 ? sources : undefined
+
+  if (!response.ok) {
+    throw new Error(`Failed to extract from image: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  return data.activities.map((activity: any, index: number) => ({
+    id: `${Date.now()}-${index}`,
+    placeName: activity.placeName,
+    category: activity.category,
+    city: activity.city,
+    originalContext: activity.originalContext || 'Screenshot',
+    rating: activity.rating,
+    description: activity.description,
+    websiteUrl: activity.websiteUrl,
+    address: activity.address,
+    cost: activity.cost,
+    dayNumber: 1,
+    lat: activity.lat,
+    lng: activity.lng,
+    isVerified: true
   }));
 };
 
 /**
  * Gets weather context for the trip
+ * Simplified version - returns empty for now
+ * TODO: Integrate with weather API or backend endpoint
  */
 export const getWeatherForecast = async (cities: string[]): Promise<Record<string, string>> => {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `What is the typical or current weather (temp and condition) for these cities: ${cities.join(", ")}? Keep it very short like '22°C, Sunny'.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            forecasts: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  city: { type: Type.STRING },
-                  weather: { type: Type.STRING }
-                }
-              }
-            }
-          }
-        },
-      },
-    });
-    const result = JSON.parse(response.text || '{"forecasts": []}');
-    const map: Record<string, string> = {};
-    result.forecasts.forEach((f: any) => map[f.city] = f.weather);
-    return map;
-  } catch (e) {
-    return {};
-  }
+  // Simplified - return empty weather data
+  return {};
 };
 
 export const identifyLandmarkFromImage = async (base64Image: string): Promise<TripItem | null> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: [
-        { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-        { text: "Identify this landmark. Return details. Search for coordinates." },
-      ],
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            item: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                placeName: { type: Type.STRING },
-                category: { type: Type.STRING },
-                city: { type: Type.STRING },
-                description: { type: Type.STRING },
-                lat: { type: Type.NUMBER },
-                lng: { type: Type.NUMBER }
-              },
-              required: ["id", "placeName", "city"]
-            }
-          }
-        },
-      },
+    const response = await fetch(`${API_URL}/api/import/ar-scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64Image })
     });
-    const result = JSON.parse(response.text || '{"item": null}');
-    return result.item ? { ...result.item, isVerified: true, originalContext: 'AR Scan' } : null;
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.activity) {
+      return null;
+    }
+
+    return {
+      id: `ar-${Date.now()}`,
+      placeName: data.activity.placeName,
+      category: data.activity.category || 'Landmark',
+      city: data.activity.city,
+      description: data.activity.description,
+      lat: data.activity.lat,
+      lng: data.activity.lng,
+      rating: data.activity.rating,
+      isVerified: true,
+      originalContext: 'AR Scan',
+      dayNumber: 1
+    };
   } catch (e) {
     return null;
   }
 };
 
 export const getTravelEstimates = async (items: TripItem[]): Promise<string[]> => {
+  // Simplified - return empty travel estimates
+  // TODO: Integrate with Google Maps API or backend endpoint
   if (items.length < 2) return [];
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Travel estimates between: ${JSON.stringify(items.map(i => `${i.placeName}, ${i.city}`))}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            estimates: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
-        },
-      },
-    });
-    const result = JSON.parse(response.text || '{"estimates": []}');
-    return result.estimates;
-  } catch (e) {
-    return Array(items.length - 1).fill('');
-  }
+  return Array(items.length - 1).fill('~10 min');
 };
 
 export const optimizeAndGroupRoute = async (items: TripItem[]): Promise<TripItem[]> => {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `Optimize and group by days: ${JSON.stringify(items.map(i => ({ id: i.id, name: i.placeName, city: i.city })))}`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          optimizedItems: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                dayNumber: { type: Type.INTEGER },
-                travelTimeNext: { type: Type.STRING }
-              }
-            }
-          }
-        },
-      },
-    },
+  // Simple optimization: group by city, max 8 items per day
+  const maxItemsPerDay = 8;
+  const groupedByCity: Record<string, TripItem[]> = {};
+
+  // Group by city
+  items.forEach(item => {
+    if (!groupedByCity[item.city]) {
+      groupedByCity[item.city] = [];
+    }
+    groupedByCity[item.city].push(item);
   });
-  const result = JSON.parse(response.text || '{"optimizedItems": []}');
-  const mapping = new Map(result.optimizedItems.map((m: any) => [m.id, { day: m.dayNumber, next: m.travelTimeNext }]));
-  return [...items].sort((a, b) => {
-    const dayA = (mapping.get(a.id) as any)?.day ?? 1;
-    const dayB = (mapping.get(b.id) as any)?.day ?? 1;
-    return dayA - dayB;
-  }).map(item => ({
-    ...item,
-    dayNumber: (mapping.get(item.id) as any)?.day ?? 1,
-    travelTimeNext: (mapping.get(item.id) as any)?.next ?? item.travelTimeNext
-  }));
+
+  // Assign day numbers
+  let dayNumber = 1;
+  const optimized: TripItem[] = [];
+
+  Object.values(groupedByCity).forEach(cityItems => {
+    for (let i = 0; i < cityItems.length; i += maxItemsPerDay) {
+      const chunk = cityItems.slice(i, i + maxItemsPerDay);
+      chunk.forEach((item, idx) => {
+        optimized.push({
+          ...item,
+          dayNumber,
+          travelTimeNext: idx < chunk.length - 1 ? '~15 min' : undefined
+        });
+      });
+      dayNumber++;
+    }
+  });
+
+  return optimized;
 };
