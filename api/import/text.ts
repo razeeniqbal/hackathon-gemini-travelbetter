@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { extractFromText } from '../../lib/backend/geminiService.ts';
+import { extractFromText } from '../../lib/backend/geminiService.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST requests

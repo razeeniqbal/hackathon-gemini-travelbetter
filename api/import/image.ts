@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { extractFromImage } from '../../lib/backend/geminiService.ts';
+import { extractFromImage } from '../../lib/backend/geminiService.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

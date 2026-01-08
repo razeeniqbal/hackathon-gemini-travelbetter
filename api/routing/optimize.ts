@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { optimizeTripRoute } from '../../lib/backend/clusteringService.ts';
+import { optimizeTripRoute } from '../../lib/backend/clusteringService.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
