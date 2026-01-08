@@ -5,7 +5,7 @@ import { TripItem } from "../types";
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const extractItineraryFromText = async (text: string): Promise<TripItem[]> => {
-  const response = await fetch(`${API_URL}/api/import/text`, {
+  const response = await fetch(`${API_URL}/import/text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text })
@@ -36,7 +36,7 @@ export const extractItineraryFromText = async (text: string): Promise<TripItem[]
 };
 
 export const extractItineraryFromImage = async (base64Image: string): Promise<TripItem[]> => {
-  const response = await fetch(`${API_URL}/api/import/image`, {
+  const response = await fetch(`${API_URL}/import/image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ base64Image })
@@ -78,7 +78,7 @@ export const getWeatherForecast = async (cities: string[]): Promise<Record<strin
 
 export const identifyLandmarkFromImage = async (base64Image: string): Promise<TripItem | null> => {
   try {
-    const response = await fetch(`${API_URL}/api/import/ar-scan`, {
+    const response = await fetch(`${API_URL}/import/ar-scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ base64Image })
